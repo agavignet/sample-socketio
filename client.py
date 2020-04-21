@@ -54,4 +54,5 @@ class Client:
 if __name__ == "__main__":
     with Client() as sio:
         sio.wait_for_status_ok()
+    sio.client.wait()
     print("Done")
