@@ -1,6 +1,8 @@
 import os
 import time
 import socketio
+import asyncio
+
 
 import urllib3
 import sys
@@ -13,7 +15,7 @@ SERVER_IP = os.environ.get("SERVER_IP", "localhost")
 class Client:
     def __init__(self):
         verbose = True
-        self.client = socketio.Client(
+        self.client = socketio.AsyncClient(
             ssl_verify=False,
             logger=verbose,
             engineio_logger=verbose,
@@ -24,20 +26,21 @@ class Client:
         self.client.on("disconnect", self.on_disconnected)
         self.client.on("status", self.on_status_received)
 
-    def __enter__(self):
+    async def __aenter__(self):
         try:
-            self.client.connect("https://{}:5000".format(SERVER_IP))
+            await self.client.connect("https://{}:5000".format(SERVER_IP))
         except socketio.exceptions.ConnectionError:
             print("Connection error")
         return self
 
-    def __exit__(self, exception_type, exception_value, traceback):
+    async def __aexit__(self, exception_type, exception_value, traceback):
         if self.client.connected:
-            self.client.disconnect()
+            await self.client.disconnect()
+            await self.client.wait()
 
-    def on_connected(self):
+    async def on_connected(self):
         print("connection established")
-        self.client.emit(event="subscribe_status", data={"code": "ok"})
+        await self.client.emit(event="subscribe_status", data={"code": "ok"})
 
     def on_disconnected(self):
         print("disconnected from server")
@@ -46,13 +49,19 @@ class Client:
         print("data ", data)
         self.received_status = data.get("status", None)
 
-    def wait_for_status_ok(self):
+    async def wait_for_status_ok(self):
         while self.client.connected and self.received_status != "ok":
-            time.sleep(0.1)
+            await self.client.sleep(0.1)
+
+
+async def wait_for_status_ok():
+    async with Client() as sio:
+        await sio.wait_for_status_ok()
+    return True
 
 
 if __name__ == "__main__":
-    with Client() as sio:
-        sio.wait_for_status_ok()
-    sio.client.wait()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    result = loop.run_until_complete(wait_for_status_ok())
     print("Done")
